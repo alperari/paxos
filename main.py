@@ -9,6 +9,8 @@ import numpy
 
 BASE_PORT = 5550
 
+# MESSAGE FORMAT = "START|CRASH xxx|JOIN:from:to"
+
 # def receiveMessagesAsProposer(proposer_id, numProc):
 #     for pid in numProc:
 
@@ -26,38 +28,55 @@ def broadcastFailure(msg, proposer_id, numProc, prob):
     pass
 
 
+def customSendMessage(msg, sender_id, target_id, push_sockets_dict):
+    socket = push_sockets_dict[target_id]
+
+    message = f"{msg}:{sender_id}:{target_id}"
+    socket.send_string(message)
+
+
+def customBroadcastMessage(msg, sender_id, push_sockets_dict):
+    for target_id, socket in push_sockets_dict.items():
+        message = f"{msg}:{sender_id}:{target_id}"
+        socket.send_string(message)
+
+
 def PaxosNode(node_id, value, numProc, prob, numRounds):
     maxVotedRound = -1
     maxVotedVal = None
     proposeVal = None
     decision = None
 
-    # Create PULL socket (1 many)
+    # Create PULL socket (1 socket) (use bind since it will receive messages from N nodes)
     context = zmq.Context()
     socket_pull = context.socket(zmq.PULL)
-    socket_pull.connect(f"tcp://127.0.0.1:{BASE_PORT + node_id}")
+    socket_pull.bind(f"tcp://127.0.0.1:{BASE_PORT + node_id}")
 
-    # Create PUSH sockets (numProc many)
+    # Create PUSH sockets (N sockets) (use connect since they will be used to send 1 message)
     push_sockets_dict = {}
+
     for target_id in range(numProc):
         socket_push = context.socket(zmq.PUSH)
         socket_push.connect(f"tcp://127.0.0.1:{BASE_PORT + target_id}")
         push_sockets_dict[target_id] = socket_push
 
-    # Wait for everyone finish establishing their connections
+    # Wait for everyone finishing establishing their connections
     time.sleep(1)
 
-    # Start rounds
+    # Run algorithm
     for r in range(numRounds):
         print("node_id:", node_id, "entering round:", r)
 
         is_proposer = r % numProc == node_id
 
         if is_proposer:
-            print("round:", r, "im proposer:", node_id)
+            time.sleep(0.5)
+            print("round:", r, "proposer:", node_id)
 
             # Is the node crashed with probability 'prob'
-            is_crashed = numpy.random.choice([True, False], p=[prob, 1 - prob])
+            # is_crashed = numpy.random.choice([True, False], p=[prob, 1 - prob])
+            is_crashed = False
+
             print("round:", r, "node_id:", node_id, "is_crashed:", is_crashed)
 
             if is_crashed:
@@ -65,12 +84,43 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
 
             else:
                 broadcastFailure("START", node_id, numProc, prob)
+                customBroadcastMessage("START", node_id, push_sockets_dict)
+                pass
 
-            # Receive N many massages
-            # TODO
+        # Receive N many massages
+        # TODO
+        message_received = socket_pull.recv_string()
+
+        message_received = message_received.split(":")
+        message_received_body = message_received[0]
+        message_received_from = int(message_received[1])
+        message_received_to = int(message_received[2])
+
+        print(
+            "node_id:",
+            node_id,
+            "received message:",
+            message_received,
+        )
+
+        time.sleep(0.5)
+
+        if is_proposer:
+            # Receive responses and count values
+            print("I am porposer:", node_id, "listening messages")
+
+            for _ in range(numProc - 1):
+                message_received = socket_pull.recv_string()
+                print("proposer received:", message_received)
 
         else:
-            pass
+            time.sleep(0.5)
+            if message_received_body == "START":
+                print("node:", node_id, "sending message to proposer")
+                customSendMessage(
+                    "JOIN", node_id, message_received_from, push_sockets_dict
+                )
+
     pass
 
 
