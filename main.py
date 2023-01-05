@@ -57,14 +57,14 @@ def sendRegular(body, sender_id, target_id, push_socket):
     )
 
 
-def broadcastRegular(body, sender_id, numProc, prob, push_sockets_dict, am_i_excluded):
+def broadcastRegular(body, sender_id, numProc, push_sockets_dict, am_i_excluded):
     for target_id in range(numProc):
         push_socket = push_sockets_dict[target_id]
 
-        # send message to target
         if am_i_excluded and target_id == sender_id:
             continue
 
+        # send message to target
         sendRegular(body, sender_id, target_id, push_socket)
 
 
@@ -263,8 +263,16 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
             else:
                 # Broadcast 'ROUNDCHANGE'
                 print("proposer:", node_id, "broadcasting ROUNDCHANGE")
+                broadcastRegular(
+                    body="ROUNDCHANGE",
+                    sender_id=node_id,
+                    numProc=numProc,
+                    push_sockets_dict=push_sockets_dict,
+                    am_i_excluded=True,
+                )
 
-                pass
+                # Go for another round
+                continue
 
         # Receive 'PROPOSER|CRASH' from proposer
         message_received = socket_pull.recv_json()
