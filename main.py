@@ -15,38 +15,53 @@ BASE_PORT = 5550
 #     for pid in numProc:
 
 
-def sendFailure(msg, proposer_id, target_id, prob):
-    pass
+def sendFailure(body, sender_id, target_id, prob, push_socket):
+    is_crashed = numpy.random.choice([True, False], p=[prob, 1 - prob])
+
+    message = {}
+    if is_crashed:
+        message = {"body": "CRASH", "from": sender_id, "to": target_id}
+    else:
+        message = {"body": body, "from": sender_id, "to": target_id}
+
+    push_socket.send_json(message)
+    print(
+        "sender_id:",
+        sender_id,
+        "sent message to target_id:",
+        target_id,
+        "a message:",
+        message,
+    )
 
 
-def broadcastFailure(msg, proposer_id, numProc, prob):
+def broadcastFailure(body, sender_id, numProc, prob, push_sockets_dict):
     for target_id in range(numProc):
-        # send message to target with pid=pid
-        sendFailure(msg, proposer_id, target_id, prob)
-        pass
+        push_socket = push_sockets_dict[target_id]
 
-    pass
-
-
-def customSendMessage(body, sender_id, target_id, push_sockets_dict):
-    socket = push_sockets_dict[target_id]
-
-    message = f"{body}:{sender_id}:{target_id}"
-    socket.send_string(message)
+        # send message to target
+        sendFailure(body, sender_id, target_id, prob, push_socket)
 
 
-def customBroadcastMessage(body, sender_id, push_sockets_dict):
-    for target_id, socket in push_sockets_dict.items():
-        message = f"{body}:{sender_id}:{target_id}"
-        socket.send_string(message)
+# def customSendMessage(body, sender_id, target_id, push_sockets_dict):
+#     socket = push_sockets_dict[target_id]
+
+#     message = f"{body}:{sender_id}:{target_id}"
+#     socket.send_string(message)
 
 
-def parseMessage(msg):
-    msg = msg.split(":")
-    body = msg[0]
-    from_id = int(msg[1])
-    to_id = int(msg[2])
-    return body, from_id, to_id
+# def customBroadcastMessage(body, sender_id, push_sockets_dict):
+#     for target_id, socket in push_sockets_dict.items():
+#         message = f"{body}:{sender_id}:{target_id}"
+#         socket.send_string(message)
+
+
+# def parseMessage(msg):
+#     msg = msg.split(":")
+#     body = msg[0]
+#     from_id = int(msg[1])
+#     to_id = int(msg[2])
+#     return body, from_id, to_id
 
 
 def PaxosNode(node_id, value, numProc, prob, numRounds):
@@ -81,29 +96,21 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
             time.sleep(0.5)
             print("round:", r, "proposer:", node_id)
 
-            # Is the node crashed with probability 'prob'
-            # is_crashed = numpy.random.choice([True, False], p=[prob, 1 - prob])
-            is_crashed = False
-
-            print("round:", r, "node_id:", node_id, "is_crashed:", is_crashed)
-
-            if is_crashed:
-                # broadcastFailure(f"CRASH {node_id}", node_id, numProc, prob)
-                pass
-            else:
-                # broadcastFailure("START", node_id, numProc, prob)
-                customBroadcastMessage("START", node_id, push_sockets_dict)
-                pass
+            broadcastFailure(
+                body="START",
+                sender_id=node_id,
+                numProc=numProc,
+                prob=prob,
+                push_sockets_dict=push_sockets_dict,
+            )
 
         # Receive 'START|CRASH' from proposer
-        # TODO
-        message_received = socket_pull.recv_string()
+        message_received = socket_pull.recv_json()
 
-        (
-            message_received_body,
-            message_received_from,
-            message_received_to,
-        ) = parseMessage(message_received)
+        # Parse message received
+        message_received_body = message_received["body"]
+        message_received_from = message_received["from"]
+        message_received_to = message_received["to"]
 
         print(
             "node_id:",
@@ -114,39 +121,48 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
 
         time.sleep(0.5)
 
-        if message_received_body == "START":
+        # if "START" in message_received_body:
+        #     if is_proposer:
+        #         # As a proposer:
 
-            if is_proposer:
-                # Receive response from N-1 acceptors ('JOIN')
-                join_count = 1
-                print("I am porposer:", node_id, "listening messages")
+        #         # Receive response from N-1 acceptors ('JOIN')
+        #         join_count = 1
+        #         print("I am porposer:", node_id, "listening messages")
 
-                for _ in range(numProc - 1):
-                    message_received = socket_pull.recv_string()
-                    print("proposer received:", message_received)
-                    (
-                        message_received_body,
-                        message_received_from,
-                        message_received_to,
-                    ) = parseMessage(message_received)
+        #         for _ in range(numProc - 1):
+        #             message_received = socket_pull.recv_string()
+        #             print("proposer received:", message_received)
+        #             (
+        #                 message_received_body,
+        #                 message_received_from,
+        #                 message_received_to,
+        #             ) = parseMessage(message_received)
 
-                    if message_received_body == "JOIN":
-                        join_count += 1
-                
-                print("JOIN count:", join_count)
+        #             if message_received_body == "JOIN":
+        #                 join_count += 1
+        #         print("JOIN count:", join_count)
 
-            else:
-                time.sleep(0.5)
+        #         if join_count > int(numProc / 2):
+        #             pass
+        #         else:
+        #             # TODO
+        #             pass
 
-                if message_received_body == "START":
+        #     else:
+        #         # As an acceptor:
 
-                    print("node:", node_id, "sending message to proposer")
-                    customSendMessage(
-                        body="JOIN",
-                        sender_id=node_id,
-                        target_id=message_received_from,
-                        push_sockets_dict=push_sockets_dict,
-                    )
+        #         time.sleep(0.5)
+
+        #         print("node:", node_id, "sending message to proposer")
+        #         customSendMessage(
+        #             body="JOIN",
+        #             sender_id=node_id,
+        #             target_id=message_received_from,
+        #             push_sockets_dict=push_sockets_dict,
+        #         )
+
+        # elif "CRASH" in message_received_body:
+        #     pass
 
     pass
 
