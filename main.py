@@ -43,6 +43,31 @@ def broadcastFailure(body, sender_id, numProc, prob, push_sockets_dict):
         sendFailure(body, sender_id, target_id, prob, push_socket)
 
 
+def sendRegular(body, sender_id, target_id, push_socket):
+    message = {"body": body, "from": sender_id, "to": target_id}
+
+    push_socket.send_json(message)
+    print(
+        "sender_id:",
+        sender_id,
+        "sent message to target_id:",
+        target_id,
+        "a message:",
+        message,
+    )
+
+
+def broadcastRegular(body, sender_id, numProc, prob, push_sockets_dict, am_i_excluded):
+    for target_id in range(numProc):
+        push_socket = push_sockets_dict[target_id]
+
+        # send message to target
+        if am_i_excluded and target_id == sender_id:
+            continue
+
+        sendRegular(body, sender_id, target_id, push_socket)
+
+
 # def customSendMessage(body, sender_id, target_id, push_sockets_dict):
 #     socket = push_sockets_dict[target_id]
 
@@ -65,10 +90,10 @@ def broadcastFailure(body, sender_id, numProc, prob, push_sockets_dict):
 
 
 def PaxosNode(node_id, value, numProc, prob, numRounds):
-    maxVotedRound = -1
-    maxVotedVal = None
-    proposeVal = None
-    decision = None
+    maxVotedRound = -1  # Proposer & Acceptor
+    maxVotedVal = None  # Proposer & Acceptor
+    proposeVal = None  # Only Proposer
+    decision = None  # Only Proposer
 
     # Create PULL socket (1 socket) (use bind since it will receive messages from N nodes)
     context = zmq.Context()
@@ -93,6 +118,8 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
         is_proposer = r % numProc == node_id
 
         if is_proposer:
+            # Broadcast 'START'
+
             time.sleep(0.5)
             print("round:", r, "proposer:", node_id)
 
@@ -121,48 +148,138 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
 
         time.sleep(0.5)
 
-        # if "START" in message_received_body:
-        #     if is_proposer:
-        #         # As a proposer:
+        # Phase1 --------------------------------------------------
+        join_count = 0
+        will_propose = False
 
-        #         # Receive response from N-1 acceptors ('JOIN')
-        #         join_count = 1
-        #         print("I am porposer:", node_id, "listening messages")
+        if is_proposer:
+            # As a proposer:
 
-        #         for _ in range(numProc - 1):
-        #             message_received = socket_pull.recv_string()
-        #             print("proposer received:", message_received)
-        #             (
-        #                 message_received_body,
-        #                 message_received_from,
-        #                 message_received_to,
-        #             ) = parseMessage(message_received)
+            join_count = 1
+            is_received_start = False
 
-        #             if message_received_body == "JOIN":
-        #                 join_count += 1
-        #         print("JOIN count:", join_count)
+            if "START" in message_received_body:
+                join_count = 1
+                is_received_start = True
 
-        #         if join_count > int(numProc / 2):
-        #             pass
-        #         else:
-        #             # TODO
-        #             pass
+            elif "CRASH" in message_received_body:
+                # TODO
+                pass
 
-        #     else:
-        #         # As an acceptor:
+            # Receive responses from N-1 acceptors ('JOIN|CRASH')
+            print("proposer:", node_id, "listening JOIN messages")
 
-        #         time.sleep(0.5)
+            received_maxVotedRound = -1
+            received_maxVotedVal = -1
 
-        #         print("node:", node_id, "sending message to proposer")
-        #         customSendMessage(
-        #             body="JOIN",
-        #             sender_id=node_id,
-        #             target_id=message_received_from,
-        #             push_sockets_dict=push_sockets_dict,
-        #         )
+            for _ in range(numProc - 1):
+                message_received = socket_pull.recv_json()
+                print("proposer received:", message_received)
 
-        # elif "CRASH" in message_received_body:
-        #     pass
+                # Parse message received
+                message_received_body = message_received["body"]
+                message_received_from = message_received["from"]
+                message_received_to = message_received["to"]
+
+                if "JOIN" in message_received_body:
+                    join_count += 1
+
+                    parsed_join = message_received_body.split(" ")
+
+                    if int(parsed_join[1]) > received_maxVotedVal:
+                        # If incoming JOIN's maxVotedVal is bigger than previous
+                        # Then update previous with incoming maxVotedVal, round too
+                        received_maxVotedRound = int(parsed_join[0])
+                        received_maxVotedVal = int(parsed_join[1])
+
+            print("proposer:", node_id, "JOIN count:", join_count)
+
+            # If majority joined
+            if join_count > int(numProc / 2):
+
+                # If proposer received 'START' from itself in the beginning
+                # And if maxVotedRound is -1, then update proposeVal
+                if is_received_start:
+                    if maxVotedRound == -1:
+                        proposeVal = value
+                        maxVotedRound = r
+
+                # If proposer didn't receive 'START' from itself in the beginning,
+                # Then set maxVotedRound to the maximum maxVotedRound came from JOINs
+                # And set maxVotedVal to the maxixmum maxVotedVal came from JOINs
+                else:
+                    maxVotedRound = received_maxVotedRound
+                    maxVotedVal = received_maxVotedVal
+                    proposeVal = maxVotedVal
+
+                will_propose = True
+
+            # If majority didn't join
+            else:
+                will_propose = False
+
+        elif not is_proposer:
+            # As an acceptor:
+
+            if "START" in message_received_body:
+                time.sleep(0.5)
+
+                print("acceptor:", node_id, "sending message to proposer")
+
+                # Send "JOIN" to proposer
+                sendFailure(
+                    body=f"JOIN {maxVotedRound} {maxVotedVal}",
+                    sender_id=node_id,
+                    target_id=message_received_from,
+                    prob=prob,
+                    push_socket=push_sockets_dict[message_received_from],
+                )
+
+            elif "CRASH" in message_received_body:
+                # If an acceptor receives 'CRASH', then it responds with 'CRASH' too
+                sendRegular(
+                    body=f"CRASH {node_id}",
+                    sender_id=node_id,
+                    target_id=message_received_from,
+                    push_socket=push_sockets_dict[message_received_from],
+                )
+
+        # Phase2 --------------------------------------------------
+
+        if is_proposer:
+            # As a proposer
+            time.sleep(1)
+
+            if will_propose:
+                # Broadcast 'PROPOSE'
+                print("proposer:", node_id, "broadcasting PROPOSE")
+                broadcastFailure(
+                    body=f"PROPOSE {proposeVal}",
+                    sender_id=node_id,
+                    numProc=numProc,
+                    prob=prob,
+                    push_sockets_dict=push_sockets_dict,
+                )
+            else:
+                # Broadcast 'ROUNDCHANGE'
+                print("proposer:", node_id, "broadcasting ROUNDCHANGE")
+
+                pass
+
+        # Receive 'PROPOSER|CRASH' from proposer
+        message_received = socket_pull.recv_json()
+
+        # Parse message received
+        message_received_body = message_received["body"]
+        message_received_from = message_received["from"]
+        message_received_to = message_received["to"]
+
+        print(
+            "node_id:",
+            node_id,
+            "received message:",
+            message_received,
+        )
 
     pass
 
@@ -178,6 +295,7 @@ def main(args):
 
     for node_id in range(numProc):
         value = random.randint(0, 1)
+        print("main: created node with node_id:", node_id, "value:", value)
         process = Process(
             target=PaxosNode,
             args=(
