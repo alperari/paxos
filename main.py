@@ -28,17 +28,25 @@ def broadcastFailure(msg, proposer_id, numProc, prob):
     pass
 
 
-def customSendMessage(msg, sender_id, target_id, push_sockets_dict):
+def customSendMessage(body, sender_id, target_id, push_sockets_dict):
     socket = push_sockets_dict[target_id]
 
-    message = f"{msg}:{sender_id}:{target_id}"
+    message = f"{body}:{sender_id}:{target_id}"
     socket.send_string(message)
 
 
-def customBroadcastMessage(msg, sender_id, push_sockets_dict):
+def customBroadcastMessage(body, sender_id, push_sockets_dict):
     for target_id, socket in push_sockets_dict.items():
-        message = f"{msg}:{sender_id}:{target_id}"
+        message = f"{body}:{sender_id}:{target_id}"
         socket.send_string(message)
+
+
+def parseMessage(msg):
+    msg = msg.split(":")
+    body = msg[0]
+    from_id = int(msg[1])
+    to_id = int(msg[2])
+    return body, from_id, to_id
 
 
 def PaxosNode(node_id, value, numProc, prob, numRounds):
@@ -80,21 +88,22 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
             print("round:", r, "node_id:", node_id, "is_crashed:", is_crashed)
 
             if is_crashed:
-                broadcastFailure(f"CRASH {node_id}", node_id, numProc, prob)
-
+                # broadcastFailure(f"CRASH {node_id}", node_id, numProc, prob)
+                pass
             else:
-                broadcastFailure("START", node_id, numProc, prob)
+                # broadcastFailure("START", node_id, numProc, prob)
                 customBroadcastMessage("START", node_id, push_sockets_dict)
                 pass
 
-        # Receive N many massages
+        # Receive 'START|CRASH' from proposer
         # TODO
         message_received = socket_pull.recv_string()
 
-        message_received = message_received.split(":")
-        message_received_body = message_received[0]
-        message_received_from = int(message_received[1])
-        message_received_to = int(message_received[2])
+        (
+            message_received_body,
+            message_received_from,
+            message_received_to,
+        ) = parseMessage(message_received)
 
         print(
             "node_id:",
@@ -105,21 +114,39 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
 
         time.sleep(0.5)
 
-        if is_proposer:
-            # Receive responses and count values
-            print("I am porposer:", node_id, "listening messages")
+        if message_received_body == "START":
 
-            for _ in range(numProc - 1):
-                message_received = socket_pull.recv_string()
-                print("proposer received:", message_received)
+            if is_proposer:
+                # Receive response from N-1 acceptors ('JOIN')
+                join_count = 1
+                print("I am porposer:", node_id, "listening messages")
 
-        else:
-            time.sleep(0.5)
-            if message_received_body == "START":
-                print("node:", node_id, "sending message to proposer")
-                customSendMessage(
-                    "JOIN", node_id, message_received_from, push_sockets_dict
-                )
+                for _ in range(numProc - 1):
+                    message_received = socket_pull.recv_string()
+                    print("proposer received:", message_received)
+                    (
+                        message_received_body,
+                        message_received_from,
+                        message_received_to,
+                    ) = parseMessage(message_received)
+
+                    if message_received_body == "JOIN":
+                        join_count += 1
+                
+                print("JOIN count:", join_count)
+
+            else:
+                time.sleep(0.5)
+
+                if message_received_body == "START":
+
+                    print("node:", node_id, "sending message to proposer")
+                    customSendMessage(
+                        body="JOIN",
+                        sender_id=node_id,
+                        target_id=message_received_from,
+                        push_sockets_dict=push_sockets_dict,
+                    )
 
     pass
 
