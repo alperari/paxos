@@ -57,7 +57,7 @@ def sendRegular(body, sender_id, target_id, push_socket):
     )
 
 
-def broadcastRegular(body, sender_id, numProc, push_sockets_dict, am_i_excluded):
+def broadcastRegular(body, sender_id, numProc, push_sockets_dict, am_i_excluded=False):
     for target_id in range(numProc):
         push_socket = push_sockets_dict[target_id]
 
@@ -68,28 +68,7 @@ def broadcastRegular(body, sender_id, numProc, push_sockets_dict, am_i_excluded)
         sendRegular(body, sender_id, target_id, push_socket)
 
 
-# def customSendMessage(body, sender_id, target_id, push_sockets_dict):
-#     socket = push_sockets_dict[target_id]
-
-#     message = f"{body}:{sender_id}:{target_id}"
-#     socket.send_string(message)
-
-
-# def customBroadcastMessage(body, sender_id, push_sockets_dict):
-#     for target_id, socket in push_sockets_dict.items():
-#         message = f"{body}:{sender_id}:{target_id}"
-#         socket.send_string(message)
-
-
-# def parseMessage(msg):
-#     msg = msg.split(":")
-#     body = msg[0]
-#     from_id = int(msg[1])
-#     to_id = int(msg[2])
-#     return body, from_id, to_id
-
-
-def PaxosNode(node_id, value, numProc, prob, numRounds):
+def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
     maxVotedRound = -1  # Proposer & Acceptor
     maxVotedVal = None  # Proposer & Acceptor
     proposeVal = None  # Only Proposer
@@ -154,12 +133,10 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
 
         if is_proposer:
             # As a proposer:
-
-            join_count = 1
             is_received_start = False
 
             if "START" in message_received_body:
-                join_count = 1
+                join_count += 1
                 is_received_start = True
 
             elif "CRASH" in message_received_body:
@@ -196,7 +173,6 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
 
             # If majority joined
             if join_count > int(numProc / 2):
-
                 # If proposer received 'START' from itself in the beginning
                 # And if maxVotedRound is -1, then update proposeVal
                 if is_received_start:
@@ -244,6 +220,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
                     push_socket=push_sockets_dict[message_received_from],
                 )
 
+        barrier.wait()
         # Phase2 --------------------------------------------------
 
         if is_proposer:
@@ -268,13 +245,11 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
                     sender_id=node_id,
                     numProc=numProc,
                     push_sockets_dict=push_sockets_dict,
-                    am_i_excluded=True,
                 )
-
                 # Go for another round
-                continue
+                # continue
 
-        # Receive 'PROPOSER|CRASH' from proposer
+        # Receive 'PROPOSE|CRASH|ROUNDCHANGE' from proposer
         message_received = socket_pull.recv_json()
 
         # Parse message received
@@ -289,6 +264,75 @@ def PaxosNode(node_id, value, numProc, prob, numRounds):
             message_received,
         )
 
+        if is_proposer:
+            # As a proposer
+            if will_propose:
+                # If proposer has proposed new value, then it will listen N responses
+                vote_count = 0
+                is_received_propose = False
+
+                if "ROUNDCHANGE" not in message_received_body:
+                    if "PROPOSE" in message_received_body:
+                        vote_count += 1
+                        is_received_propose = True
+
+                    elif "CRASH" in message_received_body:
+                        # TODO
+                        pass
+
+                    # Receive responses from N-1 acceptors ('JOIN|CRASH')
+                    print("proposer:", node_id, "listening VOTE messages")
+
+                    for _ in range(numProc - 1):
+                        message_received = socket_pull.recv_json()
+
+                        # Parse message received
+                        message_received_body = message_received["body"]
+                        message_received_from = message_received["from"]
+                        message_received_to = message_received["to"]
+
+                        if "VOTE" in message_received_body:
+                            vote_count += 1
+
+                    if is_received_propose:
+                        maxVotedRound = r
+                        maxVotedVal = proposeVal
+
+                    if vote_count > int(numProc / 2):
+                        decision = proposeVal
+
+                    print("vote count", vote_count)
+            pass
+
+        elif not is_proposer:
+            # As an acceptor
+            time.sleep(0.5)
+
+            if "PROPOSE" in message_received_body:
+                # send 'VOTE' as an acceptor
+                sendFailure(
+                    body="VOTE",
+                    sender_id=node_id,
+                    target_id=message_received_from,
+                    prob=prob,
+                    push_socket=push_sockets_dict[message_received_from],
+                )
+
+            elif "ROUNDCHANGE" in message_received_body:
+                pass
+            elif "CRASH" in message_received_body:
+                # If an acceptor receives 'CRASH', then it responds with 'CRASH' too
+                sendRegular(
+                    body=f"CRASH {node_id}",
+                    sender_id=node_id,
+                    target_id=message_received_from,
+                    push_socket=push_sockets_dict[message_received_from],
+                )
+
+            pass
+
+        barrier.wait()
+        # Go for next round
     pass
 
 
@@ -296,6 +340,8 @@ def main(args):
     numProc = int(args[1])
     prob = float(args[2])
     numRounds = int(args[3])
+
+    barrier = Barrier(numProc)
 
     # Create processes
     # Each process represents a paxos node
@@ -312,6 +358,7 @@ def main(args):
                 numProc,
                 prob,
                 numRounds,
+                barrier,
             ),
         )
         processes.append(process)
