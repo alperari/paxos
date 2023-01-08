@@ -161,13 +161,16 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                 if "JOIN" in message_received_body:
                     join_count += 1
 
+                    # Incoming message "JOIN {maxVotedRound} {maxVotedVal}"
                     parsed_join = message_received_body.split(" ")
 
-                    if int(parsed_join[1]) > received_maxVotedVal:
+                    if int(parsed_join[1]) > received_maxVotedRound:
                         # If incoming JOIN's maxVotedVal is bigger than previous
                         # Then update previous with incoming maxVotedVal, round too
-                        received_maxVotedRound = int(parsed_join[0])
-                        received_maxVotedVal = int(parsed_join[1])
+                        # This is basically for picking the JOIN message with biggest maxVotedRound
+                        # Then we can set proposeVal to this message's maxVotedVal
+                        received_maxVotedRound = int(parsed_join[1])
+                        received_maxVotedVal = int(parsed_join[2])
 
             print("proposer:", node_id, "JOIN count:", join_count)
 
@@ -178,15 +181,12 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                 if is_received_start:
                     if maxVotedRound == -1:
                         proposeVal = value
-                        maxVotedRound = r
 
                 # If proposer didn't receive 'START' from itself in the beginning,
                 # Then set maxVotedRound to the maximum maxVotedRound came from JOINs
                 # And set maxVotedVal to the maxixmum maxVotedVal came from JOINs
                 else:
-                    maxVotedRound = received_maxVotedRound
-                    maxVotedVal = received_maxVotedVal
-                    proposeVal = maxVotedVal
+                    proposeVal = received_maxVotedVal
 
                 will_propose = True
 
@@ -317,6 +317,8 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                     prob=prob,
                     push_socket=push_sockets_dict[message_received_from],
                 )
+                maxVotedRound = r
+                maxVotedVal = message_received_body.split(" ")[1]
 
             elif "ROUNDCHANGE" in message_received_body:
                 pass
@@ -332,6 +334,8 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
             pass
 
         barrier.wait()
+        print("GOING FOR NEXT ROUND node_id:", node_id)
+        time.sleep(1)
         # Go for next round
     pass
 
