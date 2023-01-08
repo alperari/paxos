@@ -67,7 +67,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
         push_sockets_dict[target_id] = socket_push
 
     # Wait for everyone finishing establishing their connections
-    time.sleep(1)
+    time.sleep(0.3)
 
     # Run algorithm
     for r in range(numRounds):
@@ -78,7 +78,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
             print(f"ROUND {r} STARTED WITH INITIAL VALUE: {value}")
             # Broadcast 'START'
 
-            time.sleep(0.5)
+            time.sleep(0.3)
 
             broadcastFailure(
                 body="START",
@@ -96,7 +96,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
         message_received_from = message_received["from"]
         message_received_to = message_received["to"]
 
-        time.sleep(0.5)
+        time.sleep(0.3)
 
         # Phase1 --------------------------------------------------
         join_count = 0
@@ -148,14 +148,23 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                         # Then we can set proposeVal to this message's maxVotedVal
                         received_maxVotedRound = int(parsed_join[1])
                         received_maxVotedVal = int(parsed_join[2])
+
             print("join count:", join_count)
             # If majority joined
             if join_count > int(numProc / 2):
                 # If proposer received 'START' from itself in the beginning
                 # And if maxVotedRound is -1, then update proposeVal
                 if is_received_start:
+                    # print("received_maxVotedRound", received_maxVotedRound)
+                    # print("received_maxVotedVal", received_maxVotedVal)
+                    # print("111111111")
+
                     if maxVotedRound == -1:
+                        # print("***********")
                         proposeVal = value
+                    else:
+                        # SUSPICIOUS
+                        proposeVal = received_maxVotedVal
 
                 # If proposer didn't receive 'START' from itself in the beginning,
                 # Then set maxVotedRound to the maximum maxVotedRound came from JOINs
@@ -175,7 +184,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
 
             if "START" in message_received_body:
 
-                time.sleep(0.5)
+                time.sleep(0.3)
 
                 # Send "JOIN" to proposer
                 sendFailure(
@@ -200,7 +209,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
 
         if is_proposer:
             # As a proposer
-            time.sleep(1)
+            time.sleep(0.3)
 
             if will_propose:
                 # Broadcast 'PROPOSE'
@@ -281,7 +290,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
 
         elif not is_proposer:
             # As an acceptor
-            time.sleep(0.5)
+            time.sleep(0.3)
             print(f"ACCEPTOR {node_id} RECEIVED IN VOTE PHASE: {message_received_body}")
 
             if "PROPOSE" in message_received_body:
@@ -294,7 +303,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                     push_socket=push_sockets_dict[message_received_from],
                 )
                 maxVotedRound = r
-                maxVotedVal = message_received_body.split(" ")[1]
+                maxVotedVal = int(message_received_body.split(" ")[1])
 
             elif "ROUNDCHANGE" in message_received_body:
                 pass
@@ -311,7 +320,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
 
         barrier.wait()
         print("GOING FOR NEXT ROUND node_id:", node_id)
-        time.sleep(1)
+        time.sleep(0.3)
         # Go for next round
     pass
 
