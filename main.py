@@ -9,30 +9,17 @@ import numpy
 
 BASE_PORT = 5550
 
-# MESSAGE FORMAT = "START|CRASH xxx|JOIN:from:to"
-
-# def receiveMessagesAsProposer(proposer_id, numProc):
-#     for pid in numProc:
-
 
 def sendFailure(body, sender_id, target_id, prob, push_socket):
     is_crashed = numpy.random.choice([True, False], p=[prob, 1 - prob])
 
     message = {}
     if is_crashed:
-        message = {"body": "CRASH", "from": sender_id, "to": target_id}
+        message = {"body": f"CRASH {sender_id}", "from": sender_id, "to": target_id}
     else:
         message = {"body": body, "from": sender_id, "to": target_id}
 
     push_socket.send_json(message)
-    print(
-        "sender_id:",
-        sender_id,
-        "sent message to target_id:",
-        target_id,
-        "a message:",
-        message,
-    )
 
 
 def broadcastFailure(body, sender_id, numProc, prob, push_sockets_dict):
@@ -47,14 +34,6 @@ def sendRegular(body, sender_id, target_id, push_socket):
     message = {"body": body, "from": sender_id, "to": target_id}
 
     push_socket.send_json(message)
-    print(
-        "sender_id:",
-        sender_id,
-        "sent message to target_id:",
-        target_id,
-        "a message:",
-        message,
-    )
 
 
 def broadcastRegular(body, sender_id, numProc, push_sockets_dict, am_i_excluded=False):
@@ -92,15 +71,14 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
 
     # Run algorithm
     for r in range(numRounds):
-        print("node_id:", node_id, "entering round:", r)
 
         is_proposer = r % numProc == node_id
 
         if is_proposer:
+            print(f"ROUND {r} STARTED WITH INITIAL VALUE: {value}")
             # Broadcast 'START'
 
             time.sleep(0.5)
-            print("round:", r, "proposer:", node_id)
 
             broadcastFailure(
                 body="START",
@@ -118,13 +96,6 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
         message_received_from = message_received["from"]
         message_received_to = message_received["to"]
 
-        print(
-            "node_id:",
-            node_id,
-            "received message:",
-            message_received,
-        )
-
         time.sleep(0.5)
 
         # Phase1 --------------------------------------------------
@@ -132,6 +103,10 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
         will_propose = False
 
         if is_proposer:
+            print(
+                f"LEADER OF {node_id} RECEIVED IN JOIN PHASE: {message_received_body}"
+            )
+
             # As a proposer:
             is_received_start = False
 
@@ -144,19 +119,21 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                 pass
 
             # Receive responses from N-1 acceptors ('JOIN|CRASH')
-            print("proposer:", node_id, "listening JOIN messages")
 
             received_maxVotedRound = -1
             received_maxVotedVal = -1
 
             for _ in range(numProc - 1):
                 message_received = socket_pull.recv_json()
-                print("proposer received:", message_received)
 
                 # Parse message received
                 message_received_body = message_received["body"]
                 message_received_from = message_received["from"]
                 message_received_to = message_received["to"]
+
+                print(
+                    f"LEADER OF {node_id} RECEIVED IN VOTE PHASE: {message_received_body}"
+                )
 
                 if "JOIN" in message_received_body:
                     join_count += 1
@@ -171,9 +148,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                         # Then we can set proposeVal to this message's maxVotedVal
                         received_maxVotedRound = int(parsed_join[1])
                         received_maxVotedVal = int(parsed_join[2])
-
-            print("proposer:", node_id, "JOIN count:", join_count)
-
+            print("join count:", join_count)
             # If majority joined
             if join_count > int(numProc / 2):
                 # If proposer received 'START' from itself in the beginning
@@ -196,11 +171,11 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
 
         elif not is_proposer:
             # As an acceptor:
+            print(f"ACCEPTOR {node_id} RECEIVED IN JOIN PHASE: {message_received_body}")
 
             if "START" in message_received_body:
-                time.sleep(0.5)
 
-                print("acceptor:", node_id, "sending message to proposer")
+                time.sleep(0.5)
 
                 # Send "JOIN" to proposer
                 sendFailure(
@@ -229,7 +204,6 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
 
             if will_propose:
                 # Broadcast 'PROPOSE'
-                print("proposer:", node_id, "broadcasting PROPOSE")
                 broadcastFailure(
                     body=f"PROPOSE {proposeVal}",
                     sender_id=node_id,
@@ -239,7 +213,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                 )
             else:
                 # Broadcast 'ROUNDCHANGE'
-                print("proposer:", node_id, "broadcasting ROUNDCHANGE")
+                print(f"LEADER OF ROUND {r} CHANGED ROUND")
                 broadcastRegular(
                     body="ROUNDCHANGE",
                     sender_id=node_id,
@@ -257,13 +231,6 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
         message_received_from = message_received["from"]
         message_received_to = message_received["to"]
 
-        print(
-            "node_id:",
-            node_id,
-            "received message:",
-            message_received,
-        )
-
         if is_proposer:
             # As a proposer
             if will_propose:
@@ -272,6 +239,10 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                 is_received_propose = False
 
                 if "ROUNDCHANGE" not in message_received_body:
+                    print(
+                        f"LEADER OF {node_id} RECEIVED IN VOTE PHASE: {message_received_body}"
+                    )
+
                     if "PROPOSE" in message_received_body:
                         vote_count += 1
                         is_received_propose = True
@@ -281,7 +252,6 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                         pass
 
                     # Receive responses from N-1 acceptors ('JOIN|CRASH')
-                    print("proposer:", node_id, "listening VOTE messages")
 
                     for _ in range(numProc - 1):
                         message_received = socket_pull.recv_json()
@@ -290,6 +260,10 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                         message_received_body = message_received["body"]
                         message_received_from = message_received["from"]
                         message_received_to = message_received["to"]
+
+                        print(
+                            f"LEADER OF {node_id} RECEIVED IN VOTE PHASE: {message_received_body}"
+                        )
 
                         if "VOTE" in message_received_body:
                             vote_count += 1
@@ -300,6 +274,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
 
                     if vote_count > int(numProc / 2):
                         decision = proposeVal
+                        print(f"LEADER OF {node_id} DECIDED ON VALUE: {decision}")
 
                     print("vote count", vote_count)
             pass
@@ -307,6 +282,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
         elif not is_proposer:
             # As an acceptor
             time.sleep(0.5)
+            print(f"ACCEPTOR {node_id} RECEIVED IN VOTE PHASE: {message_received_body}")
 
             if "PROPOSE" in message_received_body:
                 # send 'VOTE' as an acceptor
@@ -346,6 +322,8 @@ def main(args):
     numRounds = int(args[3])
 
     barrier = Barrier(numProc)
+
+    print(f"NUM NODES: {numProc}, CRASH PROB: {prob}, NUM ROUNDS: {numRounds}")
 
     # Create processes
     # Each process represents a paxos node
