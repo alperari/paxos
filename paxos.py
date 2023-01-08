@@ -132,7 +132,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                 message_received_to = message_received["to"]
 
                 print(
-                    f"LEADER OF {node_id} RECEIVED IN VOTE PHASE: {message_received_body}"
+                    f"LEADER OF {node_id} RECEIVED IN JOIN PHASE: {message_received_body}"
                 )
 
                 if "JOIN" in message_received_body:
@@ -149,18 +149,14 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                         received_maxVotedRound = int(parsed_join[1])
                         received_maxVotedVal = int(parsed_join[2])
 
-            print("join count:", join_count)
             # If majority joined
             if join_count > int(numProc / 2):
+                will_propose = True
+
                 # If proposer received 'START' from itself in the beginning
                 # And if maxVotedRound is -1, then update proposeVal
                 if is_received_start:
-                    # print("received_maxVotedRound", received_maxVotedRound)
-                    # print("received_maxVotedVal", received_maxVotedVal)
-                    # print("111111111")
-
                     if maxVotedRound == -1:
-                        # print("***********")
                         proposeVal = value
                     else:
                         # SUSPICIOUS
@@ -170,9 +166,7 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                 # Then set maxVotedRound to the maximum maxVotedRound came from JOINs
                 # And set maxVotedVal to the maxixmum maxVotedVal came from JOINs
                 else:
-                    proposeVal = received_maxVotedVal
-
-                will_propose = True
+                    proposeVal = value
 
             # If majority didn't join
             else:
@@ -230,7 +224,6 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                     push_sockets_dict=push_sockets_dict,
                 )
                 # Go for another round
-                # continue
 
         # Receive 'PROPOSE|CRASH|ROUNDCHANGE' from proposer
         message_received = socket_pull.recv_json()
@@ -285,7 +278,6 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
                         decision = proposeVal
                         print(f"LEADER OF {node_id} DECIDED ON VALUE: {decision}")
 
-                    print("vote count", vote_count)
             pass
 
         elif not is_proposer:
@@ -319,7 +311,6 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
             pass
 
         barrier.wait()
-        print("GOING FOR NEXT ROUND node_id:", node_id)
         time.sleep(0.3)
         # Go for next round
     pass
@@ -340,7 +331,6 @@ def main(args):
 
     for node_id in range(numProc):
         value = random.randint(0, 1)
-        print("main: created node with node_id:", node_id, "value:", value)
         process = Process(
             target=PaxosNode,
             args=(
