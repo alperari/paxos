@@ -9,7 +9,7 @@ import numpy
 
 BASE_PORT = 5550
 
-
+# Sends message with crash probability
 def sendFailure(body, sender_id, target_id, prob, push_socket):
     is_crashed = numpy.random.choice([True, False], p=[prob, 1 - prob])
 
@@ -22,6 +22,7 @@ def sendFailure(body, sender_id, target_id, prob, push_socket):
     push_socket.send_json(message)
 
 
+# Broadcast message with crash probability
 def broadcastFailure(body, sender_id, numProc, prob, push_sockets_dict):
     for target_id in range(numProc):
         push_socket = push_sockets_dict[target_id]
@@ -30,12 +31,14 @@ def broadcastFailure(body, sender_id, numProc, prob, push_sockets_dict):
         sendFailure(body, sender_id, target_id, prob, push_socket)
 
 
+# Send message without crash probability
 def sendRegular(body, sender_id, target_id, push_socket):
     message = {"body": body, "from": sender_id, "to": target_id}
 
     push_socket.send_json(message)
 
 
+# Broadcast message without crash probability
 def broadcastRegular(body, sender_id, numProc, push_sockets_dict, am_i_excluded=False):
     for target_id in range(numProc):
         push_socket = push_sockets_dict[target_id]
@@ -113,10 +116,6 @@ def PaxosNode(node_id, value, numProc, prob, numRounds, barrier):
             if "START" in message_received_body:
                 join_count += 1
                 is_received_start = True
-
-            elif "CRASH" in message_received_body:
-                # TODO
-                pass
 
             # Receive responses from N-1 acceptors ('JOIN|CRASH')
 
