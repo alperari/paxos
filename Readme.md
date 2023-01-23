@@ -14,24 +14,6 @@ Plus, this Paxos version will satisfy following properties:
 2. ✅ **Validity**: Any decided value must be one of the values provided by the clients.
 3. ❌ **Termination**: All nodes must eventually terminate. (In this implementation, termination will not be guaranteed again since it will allow any number of nodes to fail at anytime.)
 
-## How To Run?
-
-Command line arguments will be:
-
-```bash
-python paxos.py <numProc> <prob> <numRounds>
-```
-
-`numProc`: Number of nodes in the network
-`prob`: Probability of crash of a node
-`numRounds`: Number of rounds that paxos will be applied in.
-
-An example:
-
-```
-python paxos.py 3 0.1 1
-```
-
 ### Specs
 
 - This implementation is using python's multiprocessing library to simulate a network of nodes as processes.
@@ -61,3 +43,73 @@ There are 2 phases in this implementation:
 
 - If there is a value decided in the end of previous rounds, proposer will propose this value again, by sending _"PROPOSE <max_value_from_previous_rounds"_
 - Else, proposer will propose a new value for the first time in the network. It will propose 0 or 1 because of Binary Consensus.
+
+## How To Run?
+
+Command line arguments will be:
+
+```bash
+python paxos.py <numProc> <prob> <numRounds>
+```
+
+`numProc`: Number of nodes in the network
+`prob`: Probability of crash of a node
+`numRounds`: Number of rounds that paxos will be applied in.
+
+### Example Run
+
+```
+python paxos.py 4 0.1 1
+```
+
+```
+NUM NODES: 4 , CRASH PROB: 0 . 1 , NUM ROUNDS: 3
+ROUND 0 STARTED WITH INITIAL VALUE: 1
+LEADER OF 0 RECEIVED IN JOIN PHASE: START
+ACCEPTOR 2 RECEIVED IN JOIN PHASE: START
+LEADER OF 0 RECEIVED IN JOIN PHASE: JOIN −1 None
+ACCEPTOR 1 RECEIVED IN JOIN PHASE: START
+LEADER OF 0 RECEIVED IN JOIN PHASE: JOIN −1 None
+ACCEPTOR 3 RECEIVED IN JOIN PHASE: CRASH 0
+LEADER OF 0 RECEIVED IN JOIN PHASE: CRASH 0
+LEADER OF 0 RECEIVED IN VOTE PHASE: PROPOSE 1
+ACCEPTOR 1 RECEIVED IN VOTE PHASE: PROPOSE 1
+ACCEPTOR 2 RECEIVED IN VOTE PHASE: PROPOSE 1
+ACCEPTOR 3 RECEIVED IN VOTE PHASE: PROPOSE 1
+LEADER OF 0 RECEIVED IN VOTE PHASE: VOTE
+LEADER OF 0 RECEIVED IN VOTE PHASE: CRASH 0
+ROUND 1 STARTED WITH INITIAL VALUE: 1
+LEADER OF 0 RECEIVED IN VOTE PHASE: VOTE
+LEADER OF 0 DECIDED ON VALUE: 1
+ACCEPTOR 3 RECEIVED IN JOIN PHASE: START
+ACCEPTOR 0 RECEIVED IN JOIN PHASE: START
+ACCEPTOR 2 RECEIVED IN JOIN PHASE: START
+LEADER OF 1 RECEIVED IN JOIN PHASE: START
+LEADER OF 1 RECEIVED IN JOIN PHASE: JOIN 0 1
+LEADER OF 1 RECEIVED IN JOIN PHASE: JOIN 0 1
+LEADER OF 1 RECEIVED IN JOIN PHASE: JOIN 0 1
+ACCEPTOR 0 RECEIVED IN VOTE PHASE: PROPOSE 1
+ACCEPTOR 2 RECEIVED IN VOTE PHASE: PROPOSE 1
+ACCEPTOR 3 RECEIVED IN VOTE PHASE: PROPOSE 1
+ROUND 2 STARTED WITH INITIAL VALUE: 1
+ACCEPTOR 0 RECEIVED IN JOIN PHASE: START
+ACCEPTOR 3 RECEIVED IN JOIN PHASE: START
+LEADER OF 2 RECEIVED IN JOIN PHASE: START
+LEADER OF 1 RECEIVED IN VOTE PHASE: PROPOSE 1
+LEADER OF 2 RECEIVED IN JOIN PHASE: JOIN 1 1
+LEADER OF 2 RECEIVED IN JOIN PHASE: JOIN 1 1
+LEADER OF 1 RECEIVED IN VOTE PHASE: VOTE
+LEADER OF 1 RECEIVED IN VOTE PHASE: VOTE
+LEADER OF 1 RECEIVED IN VOTE PHASE: VOTE
+LEADER OF 1 DECIDED ON VALUE: 1
+ACCEPTOR 1 RECEIVED IN JOIN PHASE: START
+LEADER OF 2 RECEIVED IN JOIN PHASE: JOIN 1 1
+ACCEPTOR 1 RECEIVED IN VOTE PHASE: PROPOSE 1
+ACCEPTOR 3 RECEIVED IN VOTE PHASE: PROPOSE 1
+ACCEPTOR 0 RECEIVED IN VOTE PHASE: PROPOSE 1
+LEADER OF 2 RECEIVED IN VOTE PHASE: PROPOSE 1
+LEADER OF 2 RECEIVED IN VOTE PHASE: VOTE
+LEADER OF 2 RECEIVED IN VOTE PHASE: VOTE
+LEADER OF 2 RECEIVED IN VOTE PHASE: VOTE
+LEADER OF 2 DECIDED ON VALUE: 1
+```
